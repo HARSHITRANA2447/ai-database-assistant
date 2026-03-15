@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <meta charset="UTF-8">
+    <title>AI DB Assistant</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root { --accent: #6c63ff; --accent2: #3ecf8e; --bg: #0d0d1a; --surface: #12121f; --surface2: #1a1a2e; --border: rgba(255,255,255,0.08); }
+        * { box-sizing: border-box; }
+        body { background: var(--bg); color: #e0e0e0; font-family: 'Segoe UI', sans-serif; margin: 0; height: 100vh; display: flex; flex-direction: column; }
+        /* Navbar */
+        .navbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 20px; flex-shrink: 0; }
+        .brand { font-weight: 700; font-size: 1.1rem; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        /* Layout */
+        .main-layout { display: flex; flex: 1; overflow: hidden; }
+        /* Sidebar */
+        .sidebar { width: 300px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+        .sidebar-header { padding: 16px; border-bottom: 1px solid var(--border); font-size: 0.75rem; text-transform: uppercase; color: #888; letter-spacing: 1px; }
+        .sidebar-body { flex: 1; overflow-y: auto; }
+        .sidebar-body::-webkit-scrollbar { width: 4px; }
+        .sidebar-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        .suggestion-item { padding: 10px 16px; cursor: pointer; font-size: 0.85rem; color: #bbb; border-bottom: 1px solid var(--border); transition: all 0.15s; }
+        .suggestion-item:hover { background: rgba(108,99,255,0.12); color: #fff; padding-left: 20px; }
+        .history-item { padding: 10px 16px; cursor: pointer; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+        .history-item .nl { color: #ccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .history-item .meta { color: #666; font-size: 0.72rem; margin-top: 2px; }
+        .history-item:hover { background: rgba(255,255,255,0.03); }
+        /* Chat area */
+        .chat-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .chat-messages { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+        .chat-messages::-webkit-scrollbar { width: 4px; }
+        .chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        /* Messages */
+        .msg { max-width: 85%; animation: fadeIn 0.3s ease; }
+        .msg.user { align-self: flex-end; }
+        .msg.assistant { align-self: flex-start; }
+        @keyframes fadeIn { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
+        .msg-bubble { padding: 12px 16px; border-radius: 14px; font-size: 0.9rem; line-height: 1.5; }
+        .msg.user .msg-bubble { background: linear-gradient(135deg, var(--accent), #5b54d9); color: #fff; border-bottom-right-radius: 4px; }
+        .msg.assistant .msg-bubble { background: var(--surface2); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+        /* Result card */
+        .result-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; margin-top: 8px; }
+        .result-header { padding: 12px 16px; background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .sql-block { background: #0a0a14; color: #a8ff78; font-family: 'Courier New', monospace; font-size: 0.8rem; padding: 12px 16px; border-bottom: 1px solid var(--border); overflow-x: auto; white-space: pre-wrap; }
+        .result-body { padding: 0; }
+        /* Table */
+        .result-table-wrap { overflow-x: auto; max-height: 320px; overflow-y: auto; }
+        .result-table { width: 100%; font-size: 0.82rem; border-collapse: collapse; }
+        .result-table th { background: rgba(108,99,255,0.15); color: var(--accent); padding: 8px 12px; text-align: left; font-weight: 600; position: sticky; top: 0; border-bottom: 1px solid var(--border); }
+        .result-table td { padding: 7px 12px; border-bottom: 1px solid rgba(255,255,255,0.03); color: #ccc; }
+        .result-table tr:hover td { background: rgba(255,255,255,0.03); }
+        /* Chart */
+        .chart-wrap { padding: 16px; max-height: 300px; }
+        /* Badges */
+        .badge-type { background: rgba(108,99,255,0.2); color: var(--accent); padding: 3px 8px; border-radius: 20px; font-size: 0.72rem; font-weight: 600; }
+        .badge-rows { background: rgba(62,207,142,0.15); color: var(--accent2); padding: 3px 8px; border-radius: 20px; font-size: 0.72rem; }
+        .badge-time { background: rgba(255,255,255,0.06); color: #888; padding: 3px 8px; border-radius: 20px; font-size: 0.72rem; }
+        /* Insight */
+        .insight-box { margin: 0 16px 12px; padding: 10px 14px; background: rgba(62,207,142,0.07); border: 1px solid rgba(62,207,142,0.2); border-radius: 8px; font-size: 0.83rem; color: #9ef5c8; }
+        .explanation-box { margin: 0 16px 12px; padding: 10px 14px; background: rgba(108,99,255,0.07); border: 1px solid rgba(108,99,255,0.2); border-radius: 8px; font-size: 0.83rem; color: #b8b3ff; }
+        .error-box { padding: 12px 16px; color: #ff6b6b; background: rgba(255,107,107,0.08); border: 1px solid rgba(255,107,107,0.2); border-radius: 8px; font-size: 0.85rem; }
+        /* Input area */
+        .chat-input-area { padding: 16px 24px; background: var(--surface); border-top: 1px solid var(--border); }
+        .input-row { display: flex; gap: 10px; align-items: flex-end; }
+        .chat-input { flex: 1; background: var(--surface2); border: 1px solid var(--border); color: #fff; border-radius: 12px; padding: 12px 16px; font-size: 0.9rem; resize: none; min-height: 48px; max-height: 120px; }
+        .chat-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(108,99,255,0.15); }
+        .chat-input::placeholder { color: #555; }
+        .btn-send { background: linear-gradient(135deg, var(--accent), var(--accent2)); border: none; color: white; width: 48px; height: 48px; border-radius: 12px; cursor: pointer; font-size: 1rem; flex-shrink: 0; transition: opacity 0.2s; }
+        .btn-send:hover { opacity: 0.85; }
+        .btn-send:disabled { opacity: 0.4; cursor: not-allowed; }
+        .input-options { display: flex; gap: 10px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
+        .opt-check { font-size: 0.8rem; color: #888; display: flex; align-items: center; gap: 5px; cursor: pointer; }
+        .opt-check input[type=checkbox] { accent-color: var(--accent); }
+        /* Voice button */
+        .btn-voice { background: none; border: 1px solid var(--border); color: #888; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; transition: all 0.2s; }
+        .btn-voice.recording { border-color: #ff6b6b; color: #ff6b6b; animation: pulse 1s infinite; }
+        @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+        /* Thinking indicator */
+        .thinking { display: flex; gap: 4px; padding: 14px 16px; }
+        .thinking span { width: 8px; height: 8px; border-radius: 50%; background: #555; animation: bounce 1.2s infinite; }
+        .thinking span:nth-child(2) { animation-delay: 0.2s; }
+        .thinking span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes bounce { 0%,80%,100% { transform:translateY(0); } 40% { transform:translateY(-8px); background: var(--accent); } }
+        /* Export buttons */
+        .export-btn { background: rgba(255,255,255,0.06); border: 1px solid var(--border); color: #aaa; padding: 3px 10px; border-radius: 6px; font-size: 0.75rem; cursor: pointer; transition: all 0.15s; }
+        .export-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+        /* Welcome */
+        .welcome-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; text-align: center; color: #555; padding: 40px; }
+        .welcome-icon { font-size: 4rem; margin-bottom: 16px; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .welcome-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; max-width: 500px; }
+        .welcome-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; text-align: left; cursor: pointer; font-size: 0.83rem; color: #888; transition: all 0.15s; }
+        .welcome-card:hover { border-color: var(--accent); color: #ccc; transform: translateY(-1px); }
+        .welcome-card .icon { color: var(--accent); margin-bottom: 6px; }
+        /* Schema modal */
+        .modal-content { background: var(--surface); border: 1px solid var(--border); }
+        .table-info { background: var(--surface2); border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+        .col-chip { display: inline-block; background: rgba(108,99,255,0.1); border: 1px solid rgba(108,99,255,0.2); color: #b0acff; border-radius: 4px; padding: 2px 7px; font-size: 0.75rem; margin: 2px; }
+        /* Tabs */
+        .sidebar-tabs { display: flex; border-bottom: 1px solid var(--border); }
+        .sidebar-tab { flex: 1; padding: 10px; text-align: center; font-size: 0.78rem; color: #888; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; }
+        .sidebar-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+        /* CSV Upload */
+        .csv-drop-zone { border: 2px dashed rgba(62,207,142,0.3); border-radius: 14px; padding: 36px; text-align: center; cursor: pointer; transition: all 0.2s; background: rgba(62,207,142,0.03); }
+        .csv-drop-zone:hover, .csv-drop-zone.drag-over { border-color: var(--accent2); background: rgba(62,207,142,0.07); }
+        .csv-drop-zone .icon { font-size: 2.5rem; color: var(--accent2); margin-bottom: 10px; opacity: 0.7; }
+        .csv-preview-table { width:100%; font-size:0.78rem; border-collapse:collapse; }
+        .csv-preview-table th { background: rgba(62,207,142,0.1); color: var(--accent2); padding: 6px 10px; border-bottom: 1px solid var(--border); }
+        .csv-preview-table td { padding: 5px 10px; border-bottom: 1px solid rgba(255,255,255,0.03); color: #bbb; }
+        .step-indicator { display:flex; gap:0; margin-bottom:20px; }
+        .step { flex:1; text-align:center; padding:8px; font-size:0.78rem; color:#555; border-bottom: 2px solid var(--border); }
+        .step.active { color:var(--accent2); border-bottom-color:var(--accent2); font-weight:600; }
+        .step.done { color:#555; border-bottom-color: rgba(62,207,142,0.3); }
+        .col-toggle { display:inline-flex; align-items:center; gap:5px; background:rgba(255,255,255,0.05); border:1px solid var(--border); border-radius:6px; padding:4px 10px; margin:3px; cursor:pointer; font-size:0.78rem; color:#aaa; }
+        .col-toggle input { accent-color: var(--accent2); }
+        .col-toggle.selected { border-color:var(--accent2); background:rgba(62,207,142,0.08); color:#ccc; }
+        .uploaded-table-row { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; border-bottom:1px solid var(--border); }
+        .uploaded-table-row:hover { background:rgba(255,255,255,0.02); }
+        /* Saved query */
+        .saved-item { padding: 10px 16px; border-bottom: 1px solid var(--border); cursor: pointer; }
+        .saved-item:hover { background: rgba(255,255,255,0.03); }
+        .saved-item .name { font-size: 0.85rem; color: #ccc; font-weight: 500; }
+        .saved-item .nl { font-size: 0.76rem; color: #666; margin-top: 2px; }
+    </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar d-flex justify-content-between">
+    <div class="d-flex align-items-center gap-3">
+        <i class="fas fa-database" style="color: var(--accent)"></i>
+        <span class="brand">AI DB Assistant</span>
+    </div>
+    <div class="d-flex align-items-center gap-3">
+        <span style="font-size:0.8rem; color:#888">
+            <i class="fas fa-user-circle me-1"></i>
+            <span th:text="${username}">User</span>
+        </span>
+        <span sec:authorize="hasRole('ADMIN')">
+            <a href="/admin" class="btn btn-sm" style="background:rgba(108,99,255,0.2); color: var(--accent); border: 1px solid rgba(108,99,255,0.3); font-size:0.78rem; border-radius:6px; padding: 4px 10px; text-decoration:none">
+                <i class="fas fa-cog me-1"></i>Admin
+            </a>
+        </span>
+        <button class="btn btn-sm" onclick="showSchema()" style="background:rgba(255,255,255,0.06); color:#aaa; border: 1px solid var(--border); font-size:0.78rem; border-radius:6px; padding:4px 10px">
+            <i class="fas fa-table me-1"></i>Schema
+        </button>
+        <button class="btn btn-sm" onclick="showCSVModal()" style="background:rgba(62,207,142,0.1); color:var(--accent2); border: 1px solid rgba(62,207,142,0.25); font-size:0.78rem; border-radius:6px; padding:4px 10px">
+            <i class="fas fa-file-csv me-1"></i>Upload CSV
+        </button>
+        <a href="/logout" class="btn btn-sm" style="background:rgba(255,107,107,0.1); color:#ff8080; border: 1px solid rgba(255,107,107,0.2); font-size:0.78rem; border-radius:6px; padding:4px 10px; text-decoration:none">
+            <i class="fas fa-sign-out-alt me-1"></i>Logout
+        </a>
+    </div>
+</nav>
+
+<!-- Main Layout -->
+<div class="main-layout">
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-tabs">
+            <div class="sidebar-tab active" onclick="switchTab('suggestions')">💡 Suggestions</div>
+            <div class="sidebar-tab" onclick="switchTab('history')">🕘 History</div>
+            <div class="sidebar-tab" onclick="switchTab('saved')">⭐ Saved</div>
+        </div>
+        <div class="sidebar-body">
+            <div id="tab-suggestions" class="tab-panel active">
+                <div id="suggestions-list">
+                    <div style="padding:16px; color:#555; font-size:0.82rem; text-align:center">
+                        <i class="fas fa-spinner fa-spin me-2"></i>Loading suggestions...
+                    </div>
+                </div>
+            </div>
+            <div id="tab-history" class="tab-panel">
+                <div id="history-list">
+                    <div style="padding:16px; color:#555; font-size:0.82rem; text-align:center">Loading history...</div>
+                </div>
+            </div>
+            <div id="tab-saved" class="tab-panel">
+                <div id="saved-list">
+                    <div style="padding:16px; color:#555; font-size:0.82rem; text-align:center">No saved queries yet.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat Area -->
+    <div class="chat-area">
+        <div class="chat-messages" id="chat-messages">
+            <div class="welcome-screen" id="welcome-screen">
+                <div class="welcome-icon"><i class="fas fa-comments"></i></div>
+                <h4 style="color:#ccc; margin-bottom:8px">Ask your database anything</h4>
+                <p style="font-size:0.85rem; color:#555; max-width:400px">Type in plain English and I'll convert it to SQL, execute it, and show you the results with charts and insights.</p>
+                <div class="welcome-grid" id="welcome-cards"></div>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="chat-input-area">
+            <div class="input-row">
+                <textarea id="query-input" class="chat-input" placeholder="Ask anything... e.g., 'Show top 5 employees by salary'" rows="1"
+                    onkeydown="handleKeyDown(event)" oninput="autoResize(this)"></textarea>
+                <button class="btn-voice" id="voice-btn" onclick="toggleVoice()" title="Voice Input">
+                    <i class="fas fa-microphone"></i>
+                </button>
+                <button class="btn-send" id="send-btn" onclick="sendQuery()">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+            <div class="input-options">
+                <label class="opt-check">
+                    <input type="checkbox" id="explain-check"> Explain SQL
+                </label>
+                <label class="opt-check" style="margin-left:4px">
+                    <input type="checkbox" id="chart-check" checked> Auto Chart
+                </label>
+                <span style="flex:1"></span>
+                <span style="font-size:0.75rem; color:#555">Enter to send · Shift+Enter for newline</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Schema Modal -->
+<div class="modal fade" id="schemaModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="border-color: var(--border)">
+                <h5 class="modal-title" style="color:#ccc"><i class="fas fa-table me-2" style="color:var(--accent)"></i>Database Schema</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="schema-body">
+                <div class="text-center text-muted">Loading...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Save Query Modal -->
+<div class="modal fade" id="saveModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header" style="border-color: var(--border)">
+                <h5 class="modal-title" style="color:#ccc">Save Query</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="save-name" class="form-control mb-2" placeholder="Query name..." style="background:var(--surface2);border-color:var(--border);color:#fff">
+                <input type="hidden" id="save-nl">
+                <input type="hidden" id="save-sql">
+            </div>
+            <div class="modal-footer" style="border-color:var(--border)">
+                <button class="btn btn-sm" onclick="confirmSave()" style="background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border:none;padding:6px 16px;border-radius:6px">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const chartInstances = {};
+let lastResults = null;
+let lastColumns = null;
+let recognition = null;
+
+// ─── Init ────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    loadSuggestions();
+    loadHistory();
+    loadSaved();
+});
+
+// ─── Tabs ────────────────────────────────────────────────────
+function switchTab(name) {
+    document.querySelectorAll('.sidebar-tab').forEach((t,i) => {
+        const names = ['suggestions','history','saved'];
+        t.classList.toggle('active', names[i] === name);
+    });
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    if (name === 'history') loadHistory();
+    if (name === 'saved') loadSaved();
+}
+
+// ─── Send Query ──────────────────────────────────────────────
+async function sendQuery(queryText) {
+    const input = document.getElementById('query-input');
+    const query = queryText || input.value.trim();
+    if (!query) return;
+
+    const explain = document.getElementById('explain-check').checked;
+    hideWelcome();
+    appendUserMessage(query);
+    input.value = '';
+    input.style.height = '48px';
+    showThinking();
+    setLoading(true);
+
+    try {
+        const res = await fetch('/api/query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query, explain })
+        });
+        const data = await res.json();
+        removeThinking();
+        appendResult(data);
+        loadHistory();
+    } catch (e) {
+        removeThinking();
+        appendError('Network error: ' + e.message);
+    } finally {
+        setLoading(false);
+    }
+}
+
+// ─── Append messages ─────────────────────────────────────────
+function hideWelcome() {
+    const w = document.getElementById('welcome-screen');
+    if (w) w.style.display = 'none';
+}
+
+function appendUserMessage(text) {
+    const msgs = document.getElementById('chat-messages');
+    msgs.insertAdjacentHTML('beforeend', `
+        <div class="msg user">
+            <div class="msg-bubble"><i class="fas fa-user me-2" style="opacity:0.7"></i>${escHtml(text)}</div>
+        </div>`);
+    scrollBottom();
+}
+
+function appendResult(data) {
+    const msgs = document.getElementById('chat-messages');
+    if (!data.success) {
+        msgs.insertAdjacentHTML('beforeend', `
+            <div class="msg assistant">
+                <div class="error-box"><i class="fas fa-exclamation-circle me-2"></i>${escHtml(data.error || 'An error occurred.')}</div>
+                ${data.suggestions ? buildSuggestionsHint(data.suggestions) : ''}
+            </div>`);
+        scrollBottom(); return;
+    }
+
+    lastResults = data.results;
+    lastColumns = data.columns;
+    const chartId = 'chart-' + Date.now();
+
+    let html = `<div class="msg assistant"><div class="result-card">`;
+    // Header
+    html += `<div class="result-header">
+        <i class="fas fa-check-circle" style="color:var(--accent2)"></i>
+        <span style="color:#ccc; font-size:0.85rem">${data.rowCount} row${data.rowCount!==1?'s':''} returned</span>
+        <span class="badge-type">${data.queryType || 'SELECT'}</span>
+        <span class="badge-rows"><i class="fas fa-layer-group me-1"></i>${data.rowCount}</span>
+        <span class="badge-time"><i class="fas fa-clock me-1"></i>${data.executionTimeMs}ms</span>
+        <div style="margin-left:auto; display:flex; gap:6px; flex-wrap:wrap">
+            <button class="export-btn" onclick="exportData('csv')"><i class="fas fa-file-csv me-1"></i>CSV</button>
+            <button class="export-btn" onclick="exportData('excel')"><i class="fas fa-file-excel me-1"></i>Excel</button>
+            <button class="export-btn" onclick="openSaveModal('${escAttr(data.userQuery)}','${escAttr(data.generatedSql)}')"><i class="fas fa-star me-1"></i>Save</button>
+        </div>
+    </div>`;
+
+    // SQL
+    html += `<div class="sql-block">${escHtml(data.generatedSql)}</div>`;
+
+    // Explanation
+    if (data.explanation) {
+        html += `<div class="explanation-box"><i class="fas fa-lightbulb me-2"></i>${escHtml(data.explanation)}</div>`;
+    }
+
+    // Insight
+    if (data.insight) {
+        html += `<div class="insight-box"><i class="fas fa-chart-line me-2"></i>${escHtml(data.insight)}</div>`;
+    }
+
+    // Chart toggle + table
+    const showChart = document.getElementById('chart-check').checked && data.hasNumericData && data.chartType !== 'table';
+    if (showChart) {
+        html += `<div style="padding:8px 16px; display:flex; gap:8px; border-bottom:1px solid var(--border)">
+            <button class="export-btn active" onclick="toggleView('${chartId}','chart')" id="btn-chart-${chartId}">📊 Chart</button>
+            <button class="export-btn" onclick="toggleView('${chartId}','table')" id="btn-table-${chartId}">📋 Table</button>
+        </div>
+        <div id="chart-view-${chartId}" class="chart-wrap"><canvas id="${chartId}"></canvas></div>
+        <div id="table-view-${chartId}" style="display:none">`;
+    } else {
+        html += `<div id="table-view-${chartId}">`;
+    }
+
+    // Table
+    if (data.results && data.results.length > 0) {
+        html += `<div class="result-table-wrap"><table class="result-table"><thead><tr>`;
+        data.columns.forEach(c => { html += `<th>${escHtml(c)}</th>`; });
+        html += `</tr></thead><tbody>`;
+        data.results.slice(0, 200).forEach(row => {
+            html += `<tr>`;
+            data.columns.forEach(c => { html += `<td>${row[c] !== null && row[c] !== undefined ? escHtml(String(row[c])) : '<span style="color:#555">null</span>'}</td>`; });
+            html += `</tr>`;
+        });
+        html += `</tbody></table></div>`;
+        if (data.results.length > 200) {
+            html += `<div style="padding:8px 16px; color:#666; font-size:0.78rem">Showing 200 of ${data.rowCount} rows</div>`;
+        }
+    } else {
+        html += `<div style="padding:20px; text-align:center; color:#555; font-size:0.85rem"><i class="fas fa-inbox me-2"></i>No results</div>`;
+    }
+
+    html += `</div></div></div>`;
+    msgs.insertAdjacentHTML('beforeend', html);
+    scrollBottom();
+
+    // Render chart
+    if (showChart && data.results && data.results.length > 0) {
+        setTimeout(() => renderChart(chartId, data), 100);
+    }
+}
+
+function toggleView(chartId, view) {
+    document.getElementById('chart-view-' + chartId).style.display = view === 'chart' ? 'block' : 'none';
+    document.getElementById('table-view-' + chartId).style.display = view === 'table' ? 'block' : 'none';
+    document.getElementById('btn-chart-' + chartId).style.opacity = view === 'chart' ? '1' : '0.5';
+    document.getElementById('btn-table-' + chartId).style.opacity = view === 'table' ? '1' : '0.5';
+}
+
+function renderChart(chartId, data) {
+    const ctx = document.getElementById(chartId);
+    if (!ctx) return;
+    if (chartInstances[chartId]) chartInstances[chartId].destroy();
+
+    const cols = data.columns;
+    const labelCol = cols[0];
+    const numCols = cols.filter((c,i) => i > 0 && data.results.some(r => typeof r[c] === 'number' || !isNaN(r[c])));
+    if (numCols.length === 0) return;
+
+    const labels = data.results.map(r => String(r[labelCol]));
+    const colors = ['#6c63ff','#3ecf8e','#ff6b6b','#ffd166','#06d6a0','#118ab2'];
+    const datasets = numCols.map((col, i) => ({
+        label: col,
+        data: data.results.map(r => parseFloat(r[col]) || 0),
+        backgroundColor: colors[i % colors.length] + (data.chartType === 'line' ? '33' : 'bb'),
+        borderColor: colors[i % colors.length],
+        borderWidth: 2,
+        tension: 0.4,
+        fill: data.chartType === 'line'
+    }));
+
+    chartInstances[chartId] = new Chart(ctx, {
+        type: data.chartType === 'pie' ? 'doughnut' : (data.chartType || 'bar'),
+        data: { labels, datasets: data.chartType === 'pie' ? [{ ...datasets[0], backgroundColor: colors }] : datasets },
+        options: {
+            responsive: true, maintainAspectRatio: true,
+            plugins: {
+                legend: { labels: { color: '#aaa', font: { size: 11 } } }
+            },
+            scales: data.chartType === 'pie' || data.chartType === 'doughnut' ? {} : {
+                x: { ticks: { color: '#888', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                y: { ticks: { color: '#888', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.06)' } }
+            }
+        }
+    });
+}
+
+function buildSuggestionsHint(suggestions) {
+    return `<div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:6px">` +
+        suggestions.map(s => `<span onclick="sendQuery('${escAttr(s)}')" style="background:rgba(108,99,255,0.1);border:1px solid rgba(108,99,255,0.2);color:#b0acff;padding:4px 10px;border-radius:20px;font-size:0.78rem;cursor:pointer">${escHtml(s)}</span>`).join('') +
+        `</div>`;
+}
+
+function appendError(msg) {
+    document.getElementById('chat-messages').insertAdjacentHTML('beforeend',
+        `<div class="msg assistant"><div class="error-box"><i class="fas fa-exclamation-circle me-2"></i>${escHtml(msg)}</div></div>`);
+    scrollBottom();
+}
+
+// ─── Thinking ────────────────────────────────────────────────
+function showThinking() {
+    document.getElementById('chat-messages').insertAdjacentHTML('beforeend',
+        `<div class="msg assistant" id="thinking-msg"><div class="msg-bubble"><div class="thinking"><span></span><span></span><span></span></div></div></div>`);
+    scrollBottom();
+}
+function removeThinking() {
+    const t = document.getElementById('thinking-msg');
+    if (t) t.remove();
+}
+
+// ─── Sidebar data ────────────────────────────────────────────
+async function loadSuggestions() {
+    try {
+        const res = await fetch('/api/suggestions');
+        const data = await res.json();
+        const list = document.getElementById('suggestions-list');
+        list.innerHTML = data.map(s => `
+            <div class="suggestion-item" onclick="sendQuery('${escAttr(s)}')">
+                <i class="fas fa-arrow-right me-2" style="color:var(--accent); font-size:0.75rem"></i>${escHtml(s)}
+            </div>`).join('');
+        // Also populate welcome cards
+        const wc = document.getElementById('welcome-cards');
+        if (wc) wc.innerHTML = data.slice(0,4).map(s => `
+            <div class="welcome-card" onclick="sendQuery('${escAttr(s)}')">
+                <div class="icon"><i class="fas fa-magic"></i></div>${escHtml(s)}
+            </div>`).join('');
+    } catch(e) {}
+}
+
+async function loadHistory() {
+    try {
+        const res = await fetch('/api/history');
+        const data = await res.json();
+        const list = document.getElementById('history-list');
+        if (!data.length) { list.innerHTML = `<div style="padding:16px; color:#555; font-size:0.82rem; text-align:center">No history yet.</div>`; return; }
+        list.innerHTML = data.map(h => `
+            <div class="history-item" onclick="sendQuery('${escAttr(h.userQuery)}')">
+                <div class="nl">${escHtml(h.userQuery)}</div>
+                <div class="meta">
+                    <span class="${h.executionStatus === 'SUCCESS' ? 'text-success' : 'text-danger'}">${h.executionStatus}</span>
+                    ${h.rowCount !== null ? ' · ' + h.rowCount + ' rows' : ''}
+                    · ${formatTime(h.timestamp)}
+                </div>
+            </div>`).join('');
+    } catch(e) {}
+}
+
+async function loadSaved() {
+    try {
+        const res = await fetch('/api/saved-queries');
+        const data = await res.json();
+        const list = document.getElementById('saved-list');
+        if (!data.length) { list.innerHTML = `<div style="padding:16px; color:#555; font-size:0.82rem; text-align:center">No saved queries yet.</div>`; return; }
+        list.innerHTML = data.map(q => `
+            <div class="saved-item" onclick="sendQuery('${escAttr(q.naturalLanguageQuery)}')">
+                <div class="name"><i class="fas fa-star me-1" style="color:#ffd166; font-size:0.7rem"></i>${escHtml(q.queryName)}</div>
+                <div class="nl">${escHtml(q.naturalLanguageQuery)}</div>
+            </div>`).join('');
+    } catch(e) {}
+}
+
+// ─── Schema Modal ────────────────────────────────────────────
+async function showSchema() {
+    const modal = new bootstrap.Modal(document.getElementById('schemaModal'));
+    modal.show();
+    try {
+        const res = await fetch('/api/schema');
+        const data = await res.json();
+        const body = document.getElementById('schema-body');
+        body.innerHTML = data.tables.map(t => `
+            <div class="table-info">
+                <div style="color:var(--accent); font-weight:600; margin-bottom:8px"><i class="fas fa-table me-2"></i>${t.tableName}</div>
+                <div>${t.columns.map(c => `<span class="col-chip">${c.name} <span style="color:#666">${c.type}</span></span>`).join('')}</div>
+            </div>`).join('');
+    } catch(e) {
+        document.getElementById('schema-body').innerHTML = '<div class="text-danger">Failed to load schema.</div>';
+    }
+}
+
+// ─── Export ──────────────────────────────────────────────────
+async function exportData(format) {
+    if (!lastResults) return;
+    try {
+        const res = await fetch('/api/export/' + format, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data: lastResults, columns: lastColumns })
+        });
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'query-results.' + (format === 'csv' ? 'csv' : 'xlsx');
+        a.click();
+    } catch(e) { alert('Export failed: ' + e.message); }
+}
+
+// ─── Save Query ──────────────────────────────────────────────
+function openSaveModal(nl, sql) {
+    document.getElementById('save-nl').value = nl;
+    document.getElementById('save-sql').value = sql;
+    document.getElementById('save-name').value = '';
+    new bootstrap.Modal(document.getElementById('saveModal')).show();
+}
+
+async function confirmSave() {
+    const name = document.getElementById('save-name').value.trim();
+    if (!name) return;
+    await fetch('/api/save-query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            name,
+            nlQuery: document.getElementById('save-nl').value,
+            sql: document.getElementById('save-sql').value
+        })
+    });
+    bootstrap.Modal.getInstance(document.getElementById('saveModal')).hide();
+    loadSaved();
+}
+
+// ─── Voice Input ─────────────────────────────────────────────
+function toggleVoice() {
+    const btn = document.getElementById('voice-btn');
+    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+        alert('Voice input not supported in your browser. Try Chrome.'); return;
+    }
+    if (recognition) { recognition.stop(); recognition = null; btn.classList.remove('recording'); return; }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SR();
+    recognition.lang = 'en-US';
+    recognition.onresult = e => {
+        document.getElementById('query-input').value = e.results[0][0].transcript;
+        btn.classList.remove('recording');
+        recognition = null;
+    };
+    recognition.onerror = () => { btn.classList.remove('recording'); recognition = null; };
+    recognition.onend = () => { btn.classList.remove('recording'); recognition = null; };
+    recognition.start();
+    btn.classList.add('recording');
+}
+
+// ─── Helpers ─────────────────────────────────────────────────
+function handleKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuery(); }
+}
+function autoResize(el) {
+    el.style.height = '48px';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+function scrollBottom() {
+    const msgs = document.getElementById('chat-messages');
+    setTimeout(() => msgs.scrollTop = msgs.scrollHeight, 50);
+}
+function setLoading(v) {
+    document.getElementById('send-btn').disabled = v;
+    document.getElementById('query-input').disabled = v;
+}
+function escHtml(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s) {
+    if (!s) return '';
+    return String(s).replace(/'/g,"\\'").replace(/\n/g,' ');
+}
+function formatTime(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+}
+</script>
+
+<!-- CSV Upload Modal -->
+<div class="modal fade" id="csvModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header" style="border-color:var(--border)">
+                <h5 class="modal-title" style="color:#ccc">
+                    <i class="fas fa-file-csv me-2" style="color:var(--accent2)"></i>Upload CSV to Database
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" style="padding:20px">
+
+                <!-- Step Indicator -->
+                <div class="step-indicator">
+                    <div class="step active" id="csv-step-1">① Choose File</div>
+                    <div class="step" id="csv-step-2">② Preview & Configure</div>
+                    <div class="step" id="csv-step-3">③ Done</div>
+                </div>
+
+                <!-- Step 1: Drop Zone -->
+                <div id="csv-panel-1">
+                    <div class="csv-drop-zone" id="csv-drop-zone"
+                         onclick="document.getElementById('csv-file-input').click()"
+                         ondragover="event.preventDefault();this.classList.add('drag-over')"
+                         ondragleave="this.classList.remove('drag-over')"
+                         ondrop="handleDrop(event)">
+                        <div class="icon"><i class="fas fa-cloud-upload-alt"></i></div>
+                        <div style="color:#ccc; font-size:0.95rem; margin-bottom:6px">Drop your CSV file here</div>
+                        <div style="color:#555; font-size:0.82rem">or click to browse — max 50MB</div>
+                        <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleFileSelect(event)">
+                    </div>
+
+                    <!-- Uploaded tables list -->
+                    <div style="margin-top:20px">
+                        <div style="color:#888; font-size:0.8rem; margin-bottom:10px; text-transform:uppercase; letter-spacing:1px">
+                            <i class="fas fa-table me-2"></i>Your Uploaded Tables
+                        </div>
+                        <div id="uploaded-tables-list">
+                            <div style="color:#555; font-size:0.82rem; padding:10px 0">Loading...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2: Preview & Configure -->
+                <div id="csv-panel-2" style="display:none">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-5">
+                            <label style="color:#888; font-size:0.78rem; margin-bottom:4px; display:block">Table Name</label>
+                            <input type="text" id="csv-table-name" class="form-control"
+                                   style="background:var(--surface2);border-color:var(--border);color:#fff;border-radius:8px">
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <label class="opt-check" style="margin-bottom:10px">
+                                <input type="checkbox" id="csv-drop-existing"> Replace if table exists
+                            </label>
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end justify-content-end gap-2">
+                            <button class="btn btn-sm" onclick="backToStep1()"
+                                    style="background:rgba(255,255,255,0.05);color:#888;border:1px solid var(--border);border-radius:8px;padding:7px 14px">
+                                <i class="fas fa-arrow-left me-1"></i>Back
+                            </button>
+                            <button class="btn btn-sm" onclick="confirmImport()"
+                                    style="background:linear-gradient(135deg,var(--accent2),#06d6a0);color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:600">
+                                <i class="fas fa-database me-1"></i>Import to Database
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Column selection -->
+                    <div style="margin-bottom:14px">
+                        <div style="color:#888; font-size:0.78rem; margin-bottom:8px">
+                            Select columns to import: <span style="color:#555">(all selected by default)</span>
+                            <button onclick="toggleAllCols(true)" style="background:none;border:none;color:var(--accent2);font-size:0.75rem;cursor:pointer;margin-left:8px">All</button>
+                            <button onclick="toggleAllCols(false)" style="background:none;border:none;color:#666;font-size:0.75rem;cursor:pointer">None</button>
+                        </div>
+                        <div id="csv-col-toggles" style="display:flex;flex-wrap:wrap"></div>
+                    </div>
+
+                    <!-- Detected types -->
+                    <div style="margin-bottom:14px" id="csv-types-row">
+                        <div style="color:#888; font-size:0.78rem; margin-bottom:6px">Auto-detected column types:</div>
+                        <div id="csv-types-list" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+                    </div>
+
+                    <!-- Preview table -->
+                    <div style="color:#888; font-size:0.78rem; margin-bottom:8px">
+                        Data preview (first 10 rows):
+                        <span id="csv-total-rows" style="color:var(--accent2); margin-left:8px"></span>
+                    </div>
+                    <div style="overflow-x:auto; max-height:280px; overflow-y:auto; border:1px solid var(--border); border-radius:8px">
+                        <table class="csv-preview-table" id="csv-preview-table">
+                            <thead></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Step 3: Success -->
+                <div id="csv-panel-3" style="display:none; text-align:center; padding:30px">
+                    <div style="font-size:3rem; color:var(--accent2); margin-bottom:16px">✅</div>
+                    <h5 style="color:#ccc" id="csv-success-msg">Import successful!</h5>
+                    <p style="color:#888; font-size:0.85rem" id="csv-success-detail"></p>
+                    <div style="display:flex;gap:10px;justify-content:center;margin-top:16px">
+                        <button onclick="queryUploadedTable()" class="btn btn-sm"
+                                style="background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border:none;border-radius:8px;padding:8px 18px;font-weight:600">
+                            <i class="fas fa-comments me-2"></i>Start Querying This Table
+                        </button>
+                        <button onclick="uploadAnother()" class="btn btn-sm"
+                                style="background:rgba(255,255,255,0.06);color:#aaa;border:1px solid var(--border);border-radius:8px;padding:8px 18px">
+                            <i class="fas fa-upload me-1"></i>Upload Another
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ─── CSV Upload State ─────────────────────────────────────────
+let csvFile = null;
+let csvPreviewData = null;
+let csvImportedTableName = null;
+
+function showCSVModal() {
+    loadUploadedTables();
+    backToStep1();
+    new bootstrap.Modal(document.getElementById('csvModal')).show();
+}
+
+function handleDrop(e) {
+    e.preventDefault();
+    document.getElementById('csv-drop-zone').classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f && f.name.endsWith('.csv')) processFile(f);
+    else alert('Please drop a .csv file.');
+}
+
+function handleFileSelect(e) {
+    const f = e.target.files[0];
+    if (f) processFile(f);
+}
+
+async function processFile(file) {
+    csvFile = file;
+    const zone = document.getElementById('csv-drop-zone');
+    zone.innerHTML = `<div class="icon"><i class="fas fa-spinner fa-spin"></i></div>
+                      <div style="color:#ccc">Analysing <b>${escHtml(file.name)}</b>...</div>`;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const res = await fetch('/api/csv/preview', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!data.success) { alert('Error: ' + data.message); resetDropZone(); return; }
+        csvPreviewData = data;
+        showStep2(data);
+    } catch(e) {
+        alert('Upload failed: ' + e.message);
+        resetDropZone();
+    }
+}
+
+function showStep2(data) {
+    document.getElementById('csv-panel-1').style.display = 'none';
+    document.getElementById('csv-panel-2').style.display = 'block';
+    document.getElementById('csv-panel-3').style.display = 'none';
+    setStepActive(2);
+
+    document.getElementById('csv-table-name').value = data.tableName;
+    document.getElementById('csv-total-rows').textContent = data.totalRows + ' rows total';
+
+    // Column toggles
+    const togglesDiv = document.getElementById('csv-col-toggles');
+    togglesDiv.innerHTML = '';
+    data.headers.forEach(h => {
+        const lbl = document.createElement('label');
+        lbl.className = 'col-toggle selected';
+        lbl.innerHTML = `<input type="checkbox" checked value="${escHtml(h)}"> ${escHtml(h)}`;
+        lbl.querySelector('input').addEventListener('change', function() {
+            lbl.classList.toggle('selected', this.checked);
+        });
+        togglesDiv.appendChild(lbl);
+    });
+
+    // Type chips
+    const typesList = document.getElementById('csv-types-list');
+    typesList.innerHTML = data.headers.map((h,i) =>
+        `<span style="background:rgba(108,99,255,0.1);border:1px solid rgba(108,99,255,0.2);color:#b0acff;border-radius:6px;padding:3px 8px;font-size:0.75rem">
+            <b style="color:#ccc">${escHtml(h)}</b> → ${data.columnTypes[i]}
+         </span>`
+    ).join('');
+
+    // Preview table
+    const thead = document.querySelector('#csv-preview-table thead');
+    const tbody = document.querySelector('#csv-preview-table tbody');
+    thead.innerHTML = '<tr>' + data.headers.map(h => `<th>${escHtml(h)}</th>`).join('') + '</tr>';
+    tbody.innerHTML = data.previewRows.map(row =>
+        '<tr>' + data.headers.map(h => `<td>${escHtml(row[h] || '')}</td>`).join('') + '</tr>'
+    ).join('');
+}
+
+function toggleAllCols(checked) {
+    document.querySelectorAll('#csv-col-toggles input[type=checkbox]').forEach(cb => {
+        cb.checked = checked;
+        cb.closest('.col-toggle').classList.toggle('selected', checked);
+    });
+}
+
+async function confirmImport() {
+    if (!csvFile) return;
+    const tableName   = document.getElementById('csv-table-name').value.trim();
+    const dropIfExists = document.getElementById('csv-drop-existing').checked;
+    const selected    = [...document.querySelectorAll('#csv-col-toggles input:checked')].map(c => c.value);
+
+    if (!tableName) { alert('Please enter a table name.'); return; }
+    if (selected.length === 0) { alert('Please select at least one column.'); return; }
+
+    const btn = document.querySelector('#csv-panel-2 button[onclick="confirmImport()"]');
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Importing...';
+    btn.disabled = true;
+
+    const formData = new FormData();
+    formData.append('file', csvFile);
+    formData.append('tableName', tableName);
+    formData.append('dropIfExists', dropIfExists);
+    selected.forEach(c => formData.append('selectedColumns', c));
+
+    try {
+        const res  = await fetch('/api/csv/import', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (data.success) {
+            csvImportedTableName = data.tableName;
+            document.getElementById('csv-success-msg').textContent = data.message;
+            document.getElementById('csv-success-detail').textContent =
+                data.totalRows + ' rows imported into table: ' + data.tableName;
+            showStep3();
+            loadSuggestions(); // refresh suggestions with new table
+        } else {
+            alert('Import failed: ' + data.message);
+            btn.innerHTML = '<i class="fas fa-database me-1"></i>Import to Database';
+            btn.disabled = false;
+        }
+    } catch(e) {
+        alert('Import error: ' + e.message);
+        btn.innerHTML = '<i class="fas fa-database me-1"></i>Import to Database';
+        btn.disabled = false;
+    }
+}
+
+function showStep3() {
+    document.getElementById('csv-panel-1').style.display = 'none';
+    document.getElementById('csv-panel-2').style.display = 'none';
+    document.getElementById('csv-panel-3').style.display = 'block';
+    setStepActive(3);
+}
+
+function backToStep1() {
+    document.getElementById('csv-panel-1').style.display = 'block';
+    document.getElementById('csv-panel-2').style.display = 'none';
+    document.getElementById('csv-panel-3').style.display = 'none';
+    setStepActive(1);
+    resetDropZone();
+    csvFile = null;
+    document.getElementById('csv-file-input').value = '';
+}
+
+function uploadAnother() { backToStep1(); loadUploadedTables(); }
+
+function queryUploadedTable() {
+    bootstrap.Modal.getInstance(document.getElementById('csvModal')).hide();
+    if (csvImportedTableName) sendQuery('Show all records from ' + csvImportedTableName + ' table (limit 20)');
+}
+
+function setStepActive(n) {
+    [1,2,3].forEach(i => {
+        const el = document.getElementById('csv-step-' + i);
+        el.className = 'step' + (i === n ? ' active' : i < n ? ' done' : '');
+    });
+}
+
+function resetDropZone() {
+    document.getElementById('csv-drop-zone').innerHTML = `
+        <div class="icon"><i class="fas fa-cloud-upload-alt"></i></div>
+        <div style="color:#ccc; font-size:0.95rem; margin-bottom:6px">Drop your CSV file here</div>
+        <div style="color:#555; font-size:0.82rem">or click to browse — max 50MB</div>
+        <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleFileSelect(event)">`;
+}
+
+async function loadUploadedTables() {
+    const div = document.getElementById('uploaded-tables-list');
+    try {
+        const res  = await fetch('/api/csv/tables');
+        const data = await res.json();
+        if (!data.length) {
+            div.innerHTML = '<div style="color:#555;font-size:0.82rem;padding:10px 0">No uploaded tables yet.</div>';
+            return;
+        }
+        div.innerHTML = data.map(t => `
+            <div class="uploaded-table-row">
+                <div>
+                    <span style="color:#ccc;font-size:0.85rem"><i class="fas fa-table me-2" style="color:var(--accent2)"></i>${escHtml(t.tableName)}</span>
+                    <span style="color:#555;font-size:0.78rem;margin-left:8px">${t.rowCount} rows</span>
+                </div>
+                <div style="display:flex;gap:6px">
+                    <button onclick="queryTable('${escAttr(t.tableName)}')" class="export-btn">
+                        <i class="fas fa-search me-1"></i>Query
+                    </button>
+                    <button onclick="deleteTable('${escAttr(t.tableName)}')" class="export-btn" style="color:#ff8080">
+                        <i class="fas fa-trash me-1"></i>Delete
+                    </button>
+                </div>
+            </div>`).join('');
+    } catch(e) {
+        div.innerHTML = '<div style="color:#ff8080;font-size:0.82rem">Failed to load tables.</div>';
+    }
+}
+
+function queryTable(name) {
+    bootstrap.Modal.getInstance(document.getElementById('csvModal')).hide();
+    sendQuery('Show all records from ' + name + ' table (limit 20)');
+}
+
+async function deleteTable(name) {
+    if (!confirm('Delete table "' + name + '"? This cannot be undone.')) return;
+    try {
+        const res = await fetch('/api/csv/tables/' + name, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.message) loadUploadedTables();
+        else alert('Delete failed: ' + (data.error || 'Unknown error'));
+    } catch(e) { alert('Delete failed: ' + e.message); }
+}
+</script>
+
+</body>
+</html>
